@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Reservas online de Barbería GB" />
+  <title>Barbería GB | Reservas</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Oswald:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#inicio"><span class="brand-mark">GB</span><span>BARBERÍA</span></a>
+    <nav class="nav">
+      <a href="#servicios">Servicios</a>
+      <a href="#reservar">Reservar</a>
+      <a href="/admin.html" class="admin-link">Administración</a>
+    </nav>
+  </header>
+
+  <main>
+    <section id="inicio" class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow">BARBERÍA GB · AGENDA ONLINE</p>
+        <h1>Tu próximo corte, <span>sin esperar.</span></h1>
+        <p class="hero-text">Elegí el servicio, tu barbero y un horario realmente disponible. Tu turno queda registrado en nuestra agenda.</p>
+        <a class="button primary" href="#reservar">Agendar turno</a>
+      </div>
+      <div class="hero-card">
+        <div class="hero-card-top"><span class="status-dot"></span><span>Agenda conectada</span></div>
+        <div class="hero-stat"><strong>Horarios reales</strong><span>por cada barbero</span></div>
+        <div class="hero-stat"><strong>Sin cruces</strong><span>según duración del servicio</span></div>
+        <p>La disponibilidad se actualiza automáticamente.</p>
+      </div>
+    </section>
+
+    <section id="servicios" class="section">
+      <div class="section-heading"><p class="eyebrow">SERVICIOS</p><h2>Elegí tu estilo</h2></div>
+      <div id="serviceCards" class="service-grid"><div class="empty-state">Cargando servicios...</div></div>
+    </section>
+
+    <section id="reservar" class="section booking-section">
+      <div class="section-heading">
+        <p class="eyebrow">RESERVAS</p>
+        <h2>Agendá tu turno</h2>
+        <p>Los horarios disponibles dependen del servicio y del barbero seleccionado.</p>
+      </div>
+
+      <div class="booking-layout">
+        <form id="bookingForm" class="booking-form">
+          <div class="field-grid">
+            <label>Nombre y apellido<input id="clientName" type="text" required maxlength="120" placeholder="Ej. Juan Pérez"></label>
+            <label>Teléfono / WhatsApp<input id="clientPhone" type="tel" required maxlength="40" placeholder="Ej. 595981000000"></label>
+          </div>
+          <div class="field-grid">
+            <label>Servicio<select id="service" required></select></label>
+            <label>Barbero<select id="barber" required></select></label>
+          </div>
+          <div class="field-grid">
+            <label>Fecha<input id="date" type="date" required></label>
+            <label>Hora<select id="time" required><option value="">Elegí servicio, barbero y fecha</option></select></label>
+          </div>
+          <label>Nota opcional<textarea id="notes" rows="3" maxlength="1000" placeholder="Algún detalle para tu corte..."></textarea></label>
+          <button class="button primary full" type="submit">Solicitar reserva</button>
+          <p id="formMessage" class="form-message" role="status" aria-live="polite"></p>
+        </form>
+
+        <aside class="booking-summary">
+          <p class="eyebrow">TU RESERVA</p>
+          <h3 id="summaryService">Seleccioná un servicio</h3>
+          <div class="summary-row"><span>Barbero</span><strong id="summaryBarber">—</strong></div>
+          <div class="summary-row"><span>Fecha</span><strong id="summaryDate">—</strong></div>
+          <div class="summary-row"><span>Hora</span><strong id="summaryTime">—</strong></div>
+          <div class="summary-row total"><span>Precio</span><strong id="summaryPrice">—</strong></div>
+          <p class="summary-note">El turno se registra inicialmente como <strong>pendiente</strong>. La barbería puede confirmarlo desde el panel administrativo.</p>
+        </aside>
+      </div>
+    </section>
+
+    <section class="section compact-section">
+      <div class="info-panel">
+        <div><p class="eyebrow">CONFIRMACIÓN</p><h2>Tu reserva queda guardada</h2></div>
+        <p>Usamos tu número para identificar tu historial y, cuando WhatsApp esté configurado, enviarte recordatorios del turno.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer><strong>Barbería GB</strong><span>Sistema de agendamiento · V2</span></footer>
+  <script src="app.js"></script>
+</body>
+</html>

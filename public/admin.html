@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Barbería GB | Administración</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Oswald:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="admin-body">
+  <section id="loginView" class="login-shell">
+    <form id="loginForm" class="login-card">
+      <a class="brand" href="/"><span class="brand-mark">GB</span><span>BARBERÍA</span></a>
+      <div><p class="eyebrow">ADMINISTRACIÓN</p><h1>Iniciar sesión</h1></div>
+      <label>Correo<input id="loginEmail" type="email" required autocomplete="username"></label>
+      <label>Contraseña<input id="loginPassword" type="password" required autocomplete="current-password"></label>
+      <button class="button primary full" type="submit">Ingresar</button>
+      <p id="loginMessage" class="form-message"></p>
+      <a class="back-link" href="/">← Volver a reservas</a>
+    </form>
+  </section>
+
+  <div id="adminView" class="admin-shell hidden">
+    <aside class="admin-sidebar">
+      <a class="brand" href="/"><span class="brand-mark">GB</span><span>BARBERÍA</span></a>
+      <nav id="adminNav" class="admin-nav">
+        <button data-section="dashboard" class="active">Resumen</button>
+        <button data-section="appointments">Turnos</button>
+        <button data-section="barbers">Barberos</button>
+        <button data-section="services">Servicios</button>
+        <button data-section="clients">Clientes</button>
+        <button data-section="reports">Reportes</button>
+      </nav>
+      <div class="admin-user"><span id="adminName">Administrador</span><button id="logoutBtn" class="button ghost small">Salir</button></div>
+    </aside>
+
+    <main class="admin-main">
+      <header class="admin-header"><div><p class="eyebrow">PANEL DE CONTROL</p><h1 id="sectionTitle">Resumen</h1></div><span id="whatsappBadge" class="badge">WhatsApp...</span></header>
+
+      <section id="section-dashboard" class="admin-section">
+        <div id="dashboardCards" class="stat-grid"></div>
+        <div class="panel"><div class="panel-heading"><h2>Agenda de hoy</h2><button class="button ghost small" data-go="appointments">Ver turnos</button></div><div id="todayAppointments"></div></div>
+      </section>
+
+      <section id="section-appointments" class="admin-section hidden">
+        <div class="panel filters">
+          <label>Desde<input id="filterFrom" type="date"></label><label>Hasta<input id="filterTo" type="date"></label>
+          <label>Estado<select id="filterStatus"><option value="">Todos</option><option>pendiente</option><option>confirmado</option><option>atendido</option><option>cancelado</option></select></label>
+          <button id="filterAppointmentsBtn" class="button primary">Filtrar</button>
+        </div>
+        <div class="panel table-wrap"><table><thead><tr><th>Fecha</th><th>Cliente</th><th>Servicio</th><th>Barbero</th><th>Estado</th><th>Precio</th><th>Acciones</th></tr></thead><tbody id="appointmentsTable"></tbody></table></div>
+      </section>
+
+      <section id="section-barbers" class="admin-section hidden">
+        <div class="admin-two-col">
+          <form id="barberForm" class="panel form-panel">
+            <div class="panel-heading"><h2 id="barberFormTitle">Nuevo barbero</h2><button id="barberResetBtn" class="button ghost small" type="button">Limpiar</button></div>
+            <input id="barberId" type="hidden">
+            <label>Nombre<input id="barberName" required></label><label>Teléfono<input id="barberPhone"></label><label>Descripción<textarea id="barberBio" rows="3"></textarea></label>
+            <label class="check-row"><input id="barberActive" type="checkbox" checked> Activo</label>
+            <button class="button primary" type="submit">Guardar barbero</button>
+          </form>
+          <div class="panel"><div class="panel-heading"><h2>Barberos</h2></div><div id="barbersList" class="stack-list"></div></div>
+        </div>
+        <div id="schedulePanel" class="panel hidden">
+          <div class="panel-heading"><div><p class="eyebrow">HORARIOS</p><h2 id="scheduleTitle">Horario del barbero</h2></div><button id="closeScheduleBtn" class="button ghost small">Cerrar</button></div>
+          <p class="muted">Marcá los días que trabaja. El intervalo define cada cuánto se ofrecen horarios al cliente.</p>
+          <div id="scheduleGrid" class="schedule-grid"></div>
+          <button id="saveScheduleBtn" class="button primary">Guardar horarios</button>
+        </div>
+      </section>
+
+      <section id="section-services" class="admin-section hidden">
+        <div class="admin-two-col">
+          <form id="serviceForm" class="panel form-panel">
+            <div class="panel-heading"><h2 id="serviceFormTitle">Nuevo servicio</h2><button id="serviceResetBtn" class="button ghost small" type="button">Limpiar</button></div>
+            <input id="serviceId" type="hidden"><label>Nombre<input id="serviceName" required></label><label>Descripción<textarea id="serviceDescription" rows="3"></textarea></label>
+            <div class="field-grid"><label>Duración (min)<input id="serviceDuration" type="number" min="5" step="5" required></label><label>Precio (Gs.)<input id="servicePrice" type="number" min="0" step="1000" required></label></div>
+            <label class="check-row"><input id="serviceActive" type="checkbox" checked> Activo</label><button class="button primary" type="submit">Guardar servicio</button>
+          </form>
+          <div class="panel"><div class="panel-heading"><h2>Servicios</h2></div><div id="servicesList" class="stack-list"></div></div>
+        </div>
+      </section>
+
+      <section id="section-clients" class="admin-section hidden">
+        <div class="panel filters"><label>Buscar<input id="clientSearch" placeholder="Nombre o teléfono"></label><button id="searchClientsBtn" class="button primary">Buscar</button></div>
+        <div class="panel table-wrap"><table><thead><tr><th>Cliente</th><th>Teléfono</th><th>Turnos</th><th>Cortes</th><th>Total gastado</th><th></th></tr></thead><tbody id="clientsTable"></tbody></table></div>
+        <div id="clientHistory" class="panel hidden"></div>
+      </section>
+
+      <section id="section-reports" class="admin-section hidden">
+        <div class="panel filters"><label>Desde<input id="reportFrom" type="date"></label><label>Hasta<input id="reportTo" type="date"></label><button id="loadReportsBtn" class="button primary">Generar</button></div>
+        <div id="reportSummary" class="stat-grid"></div>
+        <div class="admin-two-col"><div class="panel"><h2>Por barbero</h2><div id="reportBarbers"></div></div><div class="panel"><h2>Por servicio</h2><div id="reportServices"></div></div></div>
+        <div class="panel"><h2>Detalle diario</h2><div id="reportDaily"></div></div>
+      </section>
+    </main>
+  </div>
+
+  <script src="admin.js"></script>
+</body>
+</html>

@@ -1,0 +1,23 @@
+{
+  "name": "sistema-barberia-gb",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Sistema web de agendamiento y administración para Barbería GB",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "check": "node --check src/server.js && node --check src/db.js && node --check src/auth.js && node --check src/whatsapp.js && node --check public/app.js && node --check public/admin.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.2",
+    "luxon": "^3.5.0",
+    "pg": "^8.13.1"
+  }
+}
