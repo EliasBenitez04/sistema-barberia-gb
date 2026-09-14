@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Sistema de agendamiento para Barbería GB" />
+  <title>Barbería GB | Reservas</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Oswald:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#inicio" aria-label="Barbería GB inicio">
+      <span class="brand-mark">GB</span>
+      <span>BARBERÍA</span>
+    </a>
+    <nav class="nav" aria-label="Navegación principal">
+      <a href="#servicios">Servicios</a>
+      <a href="#reservar">Reservar</a>
+      <a href="#turnos">Mis turnos</a>
+    </nav>
+  </header>
+
+  <main>
+    <section id="inicio" class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow">BARBERÍA GB · AGENDA ONLINE</p>
+        <h1>Tu próximo corte, <span>sin esperar.</span></h1>
+        <p class="hero-text">Elegí el servicio, tu barbero y el horario que te convenga. La reserva queda registrada al instante.</p>
+        <a class="button primary" href="#reservar">Agendar turno</a>
+      </div>
+      <div class="hero-card" aria-label="Resumen del servicio">
+        <div class="hero-card-top">
+          <span class="status-dot"></span>
+          <span>Agenda disponible</span>
+        </div>
+        <div class="hero-stat">
+          <strong>Lun–Sáb</strong>
+          <span>09:00 a 20:00</span>
+        </div>
+        <div class="hero-stat">
+          <strong>30–60 min</strong>
+          <span>según servicio</span>
+        </div>
+        <p>Reservá con anticipación y evitá esperas.</p>
+      </div>
+    </section>
+
+    <section id="servicios" class="section">
+      <div class="section-heading">
+        <p class="eyebrow">SERVICIOS</p>
+        <h2>Elegí tu estilo</h2>
+      </div>
+      <div id="serviceCards" class="service-grid"></div>
+    </section>
+
+    <section id="reservar" class="section booking-section">
+      <div class="section-heading">
+        <p class="eyebrow">RESERVAS</p>
+        <h2>Agendá tu turno</h2>
+        <p>Completá tus datos. En esta primera versión los turnos se guardan en este dispositivo.</p>
+      </div>
+
+      <div class="booking-layout">
+        <form id="bookingForm" class="booking-form">
+          <div class="field-grid">
+            <label>
+              Nombre y apellido
+              <input id="clientName" name="clientName" type="text" placeholder="Ej. Juan Pérez" required maxlength="80" />
+            </label>
+            <label>
+              Teléfono
+              <input id="clientPhone" name="clientPhone" type="tel" placeholder="Ej. 0981 000 000" required maxlength="30" />
+            </label>
+          </div>
+
+          <div class="field-grid">
+            <label>
+              Servicio
+              <select id="service" name="service" required></select>
+            </label>
+            <label>
+              Barbero
+              <select id="barber" name="barber" required></select>
+            </label>
+          </div>
+
+          <div class="field-grid">
+            <label>
+              Fecha
+              <input id="date" name="date" type="date" required />
+            </label>
+            <label>
+              Hora
+              <select id="time" name="time" required></select>
+            </label>
+          </div>
+
+          <label>
+            Nota opcional
+            <textarea id="notes" name="notes" rows="3" placeholder="Algún detalle para tu corte..." maxlength="240"></textarea>
+          </label>
+
+          <button class="button primary full" type="submit">Confirmar reserva</button>
+          <p id="formMessage" class="form-message" role="status" aria-live="polite"></p>
+        </form>
+
+        <aside class="booking-summary">
+          <p class="eyebrow">TU RESERVA</p>
+          <h3 id="summaryService">Seleccioná un servicio</h3>
+          <div class="summary-row"><span>Barbero</span><strong id="summaryBarber">—</strong></div>
+          <div class="summary-row"><span>Fecha</span><strong id="summaryDate">—</strong></div>
+          <div class="summary-row"><span>Hora</span><strong id="summaryTime">—</strong></div>
+          <div class="summary-row total"><span>Precio</span><strong id="summaryPrice">—</strong></div>
+        </aside>
+      </div>
+    </section>
+
+    <section id="turnos" class="section appointments-section">
+      <div class="section-heading appointments-heading">
+        <div>
+          <p class="eyebrow">AGENDA</p>
+          <h2>Turnos registrados</h2>
+        </div>
+        <button id="clearAppointments" class="button ghost" type="button">Borrar todos</button>
+      </div>
+      <div id="appointmentList" class="appointment-list"></div>
+    </section>
+  </main>
+
+  <footer>
+    <strong>Barbería GB</strong>
+    <span>Sistema de agendamiento · V1</span>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
