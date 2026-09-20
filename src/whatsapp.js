@@ -49,6 +49,7 @@ function getWhatsAppStatus() {
     test_template: process.env.WHATSAPP_TEST_TEMPLATE_NAME || 'hello_world',
     test_language: process.env.WHATSAPP_TEST_TEMPLATE_LANG || 'en_US',
     reminder_hours: Number(process.env.WHATSAPP_REMINDER_HOURS || 24),
+    confirmation_timeout_minutes: Number(process.env.WHATSAPP_CONFIRMATION_TIMEOUT_MINUTES || 10),
     missing
   };
 }
@@ -59,7 +60,7 @@ function notConfiguredError() {
   return error;
 }
 
-async function sendTemplate({ phone, templateName, language, parameters = [] }) {
+async function sendTemplate({ phone, templateName, language, parameters = [], buttonPayloads = [] }) {
   if (!transportConfigured()) throw notConfiguredError();
 
   const to = normalizePhone(phone);
@@ -84,12 +85,24 @@ async function sendTemplate({ phone, templateName, language, parameters = [] }) 
     language: { code: language }
   };
 
+  const components = [];
   if (parameters.length) {
-    template.components = [{
+    components.push({
       type: 'body',
       parameters: parameters.map(value => ({ type: 'text', text: String(value ?? '') }))
-    }];
+    });
   }
+
+  buttonPayloads.forEach((payload, index) => {
+    components.push({
+      type: 'button',
+      sub_type: 'quick_reply',
+      index: String(index),
+      parameters: [{ type: 'payload', payload: String(payload) }]
+    });
+  });
+
+  if (components.length) template.components = components;
 
   const payload = {
     messaging_product: 'whatsapp',
@@ -130,13 +143,17 @@ async function sendAppointmentReminder({ phone, clientName, dateLabel, timeLabel
   });
 }
 
-async function sendAppointmentConfirmation({ phone, clientName, dateLabel, timeLabel, barberName, serviceName }) {
+async function sendAppointmentConfirmation({ appointmentId, phone, clientName, dateLabel, timeLabel, barberName, serviceName }) {
   if (!confirmationConfigured()) throw notConfiguredError();
   return sendTemplate({
     phone,
     templateName: process.env.WHATSAPP_CONFIRMATION_TEMPLATE_NAME,
     language: process.env.WHATSAPP_CONFIRMATION_TEMPLATE_LANG || process.env.WHATSAPP_TEMPLATE_LANG || 'es',
-    parameters: [clientName, dateLabel, timeLabel, barberName, serviceName]
+    parameters: [clientName, dateLabel, timeLabel, barberName, serviceName],
+    buttonPayloads: [
+      `booking_confirm:${appointmentId}`,
+      `booking_cancel:${appointmentId}`
+    ]
   });
 }
 
