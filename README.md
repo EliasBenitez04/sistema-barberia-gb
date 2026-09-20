@@ -116,24 +116,71 @@ WHATSAPP_TEST_TEMPLATE_LANG=en_US
 
 Luego iniciá el sistema, entrá a **Administración → WhatsApp**, escribí el número autorizado como destinatario con código de país (por ejemplo `595981123456`) y presioná **Enviar WhatsApp de prueba**.
 
-### Templates de Barbería GB
+### Confirmación obligatoria de la reserva
 
-El template `appointment_reminder` debe estar creado y aprobado en WhatsApp Manager. El cuerpo utiliza cinco variables, en este orden:
+El flujo final de reservas es:
+
+1. El cliente elige servicio, barbero, fecha y hora.
+2. El sistema crea el turno como `pendiente` y bloquea temporalmente ese horario.
+3. Se envía un template de WhatsApp con dos botones **Quick Reply**: **Confirmar turno** y **Cancelar turno**.
+4. Si el cliente confirma, el webhook cambia el turno a `confirmado`.
+5. Si cancela, cambia a `cancelado` y el horario vuelve a estar disponible.
+6. Si no responde dentro de `WHATSAPP_CONFIRMATION_TIMEOUT_MINUTES`, el sistema cambia automáticamente el turno a `cancelado` y libera el horario.
+7. Los recordatorios posteriores se envían solamente a turnos `confirmado`.
+
+Configuración recomendada:
+
+```env
+WHATSAPP_CONFIRMATION_REQUIRED=true
+WHATSAPP_CONFIRMATION_TIMEOUT_MINUTES=10
+WHATSAPP_CONFIRMATION_TEMPLATE_NAME=appointment_confirmation
+WHATSAPP_CONFIRMATION_TEMPLATE_LANG=es
+```
+
+El template `appointment_confirmation` debe tener cinco variables de cuerpo, en este orden:
 
 1. Nombre del cliente.
-2. Fecha del turno.
+2. Fecha.
+3. Hora.
+4. Barbero.
+5. Servicio.
+
+Y dos botones **Quick Reply**, en este orden:
+
+1. `Confirmar turno`
+2. `Cancelar turno`
+
+Ejemplo de cuerpo:
+
+```text
+Hola {{1}}. Recibimos tu solicitud de turno en Barbería GB.
+
+Fecha: {{2}}
+Hora: {{3}}
+Barbero: {{4}}
+Servicio: {{5}}
+
+Confirmá el turno antes de que venza la reserva temporal.
+```
+
+El sistema asigna internamente a esos botones los payloads `booking_confirm:<id>` y `booking_cancel:<id>`, por lo que el webhook sabe exactamente qué turno confirmar o liberar.
+
+### Recordatorio de turno
+
+El template `appointment_reminder` también utiliza cinco variables:
+
+1. Nombre del cliente.
+2. Fecha.
 3. Hora.
 4. Nombre del barbero.
 5. Servicio.
 
-Ejemplo de contenido:
+Ejemplo:
 
 ```text
 Hola {{1}}. Te recordamos tu turno en Barbería GB para el {{2}} a las {{3}},
 con {{4}}. Servicio: {{5}}. Te esperamos.
 ```
-
-El template de confirmación opcional utiliza las mismas cinco variables.
 
 ### Webhook
 
