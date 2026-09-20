@@ -9,6 +9,7 @@ const { signAdmin, requireAdmin } = require('./auth');
 const {
   whatsappConfigured,
   confirmationConfigured,
+  confirmationRequired,
   getWhatsAppStatus,
   sendAppointmentReminder,
   sendAppointmentConfirmation,
@@ -97,6 +98,31 @@ async function ensureWhatsAppStorage() {
   await query('CREATE INDEX IF NOT EXISTS whatsapp_messages_appointment_idx ON whatsapp_messages (appointment_id, created_at DESC)');
 }
 
+async function ensureBookingConfirmationColumns() {
+  const columns = [
+    ['whatsapp_confirmation_sent_at', 'TIMESTAMP WITH TIME ZONE'],
+    ['whatsapp_confirmation_message_id', 'VARCHAR(255)'],
+    ['confirmation_deadline', 'TIMESTAMP WITH TIME ZONE'],
+    ['confirmation_responded_at', 'TIMESTAMP WITH TIME ZONE'],
+    ['confirmation_response', 'VARCHAR(30)'],
+    ['cancellation_reason', 'VARCHAR(80)']
+  ];
+
+  for (const [name, type] of columns) {
+    const exists = await query(
+      `SELECT 1
+         FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'appointments' AND column_name = $1`,
+      [name]
+    );
+    if (!exists.rowCount) {
+      await query(`ALTER TABLE appointments ADD COLUMN ${name} ${type}`);
+    }
+  }
+
+  await query('CREATE INDEX IF NOT EXISTS appointments_confirmation_deadline_idx ON appointments (status, confirmation_deadline)');
+}
+
 async function logWhatsAppOutbound({ appointmentId = null, phone, messageKind = 'template', templateName = null, response = null, status = 'accepted', error = null }) {
   const messageId = response?.messages?.[0]?.id || null;
   await query(
@@ -176,7 +202,73 @@ async function storeWhatsAppWebhook(payload) {
     );
   }
 
+  await processBookingConfirmationReplies(messages);
   return { statuses: statuses.length, messages: messages.length };
+}
+
+async function processBookingConfirmationReplies(messages) {
+  for (const message of messages) {
+    if (message.type !== 'button') continue;
+
+    const payload = String(message.button?.payload || '');
+    const match = payload.match(/^booking_(confirm|cancel):(\d+)$/);
+    if (!match) continue;
+
+    const action = match[1];
+    const appointmentId = Number(match[2]);
+    const phone = normalizePhone(message.from);
+    const client = await pool.connect();
+
+    try {
+      await client.query('BEGIN');
+      const current = await client.query(
+        `SELECT a.id, a.status, a.confirmation_deadline, c.phone
+           FROM appointments a
+           JOIN clients c ON c.id = a.client_id
+          WHERE a.id = $1
+          FOR UPDATE OF a`,
+        [appointmentId]
+      );
+
+      const appointment = current.rows[0];
+      if (!appointment || normalizePhone(appointment.phone) !== phone || appointment.status !== 'pendiente') {
+        await client.query('ROLLBACK');
+        continue;
+      }
+
+      const expired = appointment.confirmation_deadline && new Date(appointment.confirmation_deadline).getTime() <= Date.now();
+      const nextStatus = expired || action === 'cancel' ? 'cancelado' : 'confirmado';
+      const response = expired ? 'expired' : action === 'confirm' ? 'confirmed' : 'cancelled';
+      const reason = expired ? 'confirmation_timeout' : action === 'cancel' ? 'client_cancelled' : null;
+
+      await client.query(
+        `UPDATE appointments
+            SET status = $1,
+                confirmation_response = $2,
+                confirmation_responded_at = NOW(),
+                cancellation_reason = $3
+          WHERE id = $4`,
+        [nextStatus, response, reason, appointmentId]
+      );
+      await client.query(
+        `INSERT INTO appointment_status_history (appointment_id, from_status, to_status)
+         VALUES ($1, 'pendiente', $2)`,
+        [appointmentId, nextStatus]
+      );
+      await client.query('COMMIT');
+
+      console.log(
+        nextStatus === 'confirmado'
+          ? `Turno #${appointmentId} confirmado por WhatsApp`
+          : `Turno #${appointmentId} liberado por WhatsApp (${response})`
+      );
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
 }
 
 async function ensureInitialAdmin() {
@@ -346,6 +438,9 @@ app.get('/api/public/availability', async (req, res, next) => {
 app.post('/api/public/appointments', async (req, res, next) => {
   const client = await pool.connect();
   try {
+    if (confirmationRequired() && !confirmationConfigured()) {
+      return apiError(res, 503, 'La confirmación por WhatsApp es obligatoria pero todavía no está configurada.');
+    }
     const clientName = String(req.body.client_name || '').trim();
     const phone = normalizePhone(req.body.client_phone);
     const barberId = parseId(req.body.barber_id);
@@ -382,6 +477,19 @@ app.post('/api/public/appointments', async (req, res, next) => {
       [clientResult.rows[0].id, barberId, serviceId, date, startTime, validation.endTime, validation.item.price, notes || null]
     );
 
+    const confirmationTimeoutMinutes = Math.max(1, Number(process.env.WHATSAPP_CONFIRMATION_TIMEOUT_MINUTES || 10));
+    let confirmationDeadline = null;
+    if (confirmationConfigured()) {
+      const deadlineResult = await client.query(
+        `UPDATE appointments
+            SET confirmation_deadline = NOW() + ($1::int * INTERVAL '1 minute')
+          WHERE id = $2
+        RETURNING confirmation_deadline`,
+        [confirmationTimeoutMinutes, appointment.rows[0].id]
+      );
+      confirmationDeadline = deadlineResult.rows[0]?.confirmation_deadline || null;
+    }
+
     await client.query(
       `INSERT INTO appointment_status_history (appointment_id, from_status, to_status)
        VALUES ($1, NULL, 'pendiente')`,
@@ -393,6 +501,7 @@ app.post('/api/public/appointments', async (req, res, next) => {
     if (confirmationConfigured()) {
       try {
         const confirmationResponse = await sendAppointmentConfirmation({
+          appointmentId: appointment.rows[0].id,
           phone,
           clientName,
           dateLabel: formatDateEs(date),
@@ -401,6 +510,14 @@ app.post('/api/public/appointments', async (req, res, next) => {
           serviceName: validation.item.service_name
         });
         whatsappConfirmationSent = true;
+        const confirmationMessageId = confirmationResponse?.messages?.[0]?.id || null;
+        await query(
+          `UPDATE appointments
+              SET whatsapp_confirmation_sent_at = NOW(),
+                  whatsapp_confirmation_message_id = $1
+            WHERE id = $2`,
+          [confirmationMessageId, appointment.rows[0].id]
+        );
         await logWhatsAppOutbound({
           appointmentId: appointment.rows[0].id,
           phone,
@@ -418,6 +535,24 @@ app.post('/api/public/appointments', async (req, res, next) => {
           status: 'failed',
           error
         }).catch(() => {});
+
+        if (confirmationRequired()) {
+          await query(
+            `UPDATE appointments
+                SET status = 'cancelado',
+                    confirmation_response = 'send_failed',
+                    confirmation_responded_at = NOW(),
+                    cancellation_reason = 'whatsapp_send_failed'
+              WHERE id = $1 AND status = 'pendiente'`,
+            [appointment.rows[0].id]
+          );
+          await query(
+            `INSERT INTO appointment_status_history (appointment_id, from_status, to_status)
+             VALUES ($1, 'pendiente', 'cancelado')`,
+            [appointment.rows[0].id]
+          );
+          return apiError(res, 503, 'No se pudo enviar la confirmación por WhatsApp. El horario fue liberado para que puedas intentar nuevamente.');
+        }
       }
     }
 
@@ -426,7 +561,10 @@ app.post('/api/public/appointments', async (req, res, next) => {
       service_name: validation.item.service_name,
       barber_name: validation.item.barber_name,
       client_name: clientName,
-      whatsapp_confirmation_sent: whatsappConfirmationSent
+      whatsapp_confirmation_sent: whatsappConfirmationSent,
+      confirmation_required: confirmationConfigured(),
+      confirmation_timeout_minutes: confirmationConfigured() ? confirmationTimeoutMinutes : null,
+      confirmation_deadline: confirmationDeadline
     });
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
@@ -621,7 +759,9 @@ app.get('/api/admin/appointments', requireAdmin, async (req, res, next) => {
 
     const result = await query(
       `SELECT a.id, a.appointment_date, a.start_time::text, a.end_time::text, a.price_snapshot, a.status, a.notes,
-              a.whatsapp_reminder_sent_at, c.id AS client_id, c.name AS client_name, c.phone AS client_phone,
+              a.whatsapp_reminder_sent_at, a.whatsapp_confirmation_sent_at, a.confirmation_deadline,
+              a.confirmation_responded_at, a.confirmation_response, a.cancellation_reason,
+              c.id AS client_id, c.name AS client_name, c.phone AS client_phone,
               b.id AS barber_id, b.name AS barber_name, s.id AS service_id, s.name AS service_name
          FROM appointments a
          JOIN clients c ON c.id = a.client_id
@@ -843,6 +983,33 @@ app.get('/api/admin/reports', requireAdmin, async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+async function confirmationExpiryWorker() {
+  try {
+    const expired = await query(
+      `UPDATE appointments
+          SET status = 'cancelado',
+              confirmation_response = 'expired',
+              confirmation_responded_at = NOW(),
+              cancellation_reason = 'confirmation_timeout'
+        WHERE status = 'pendiente'
+          AND confirmation_deadline IS NOT NULL
+          AND confirmation_deadline <= NOW()
+      RETURNING id`
+    );
+
+    for (const row of expired.rows) {
+      await query(
+        `INSERT INTO appointment_status_history (appointment_id, from_status, to_status)
+         VALUES ($1, 'pendiente', 'cancelado')`,
+        [row.id]
+      );
+      console.log(`Turno #${row.id} liberado por falta de confirmación de WhatsApp`);
+    }
+  } catch (error) {
+    console.error('Error liberando reservas sin confirmar:', error.message);
+  }
+}
+
 async function reminderWorker() {
   if (!whatsappConfigured()) return;
   try {
@@ -855,7 +1022,7 @@ async function reminderWorker() {
          JOIN clients c ON c.id = a.client_id
          JOIN barbers b ON b.id = a.barber_id
          JOIN services s ON s.id = a.service_id
-        WHERE a.status IN ('pendiente', 'confirmado')
+        WHERE a.status = 'confirmado'
           AND a.whatsapp_reminder_sent_at IS NULL
           AND a.appointment_date BETWEEN $1 AND $2
         ORDER BY a.appointment_date, a.start_time`,
@@ -892,10 +1059,13 @@ app.use((error, req, res, next) => {
   try {
     await query('SELECT 1');
     await ensureWhatsAppStorage();
+    await ensureBookingConfirmationColumns();
     await ensureInitialAdmin();
     app.listen(PORT, () => console.log(`Barbería GB en http://localhost:${PORT}`));
     setInterval(reminderWorker, 10 * 60 * 1000);
     setTimeout(reminderWorker, 15 * 1000);
+    setInterval(confirmationExpiryWorker, 30 * 1000);
+    setTimeout(confirmationExpiryWorker, 5 * 1000);
   } catch (error) {
     console.error('No se pudo iniciar la aplicación:', error.message);
     process.exit(1);
