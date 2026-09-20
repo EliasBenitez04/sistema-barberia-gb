@@ -21,6 +21,10 @@ function confirmationConfigured() {
   return Boolean(transportConfigured() && process.env.WHATSAPP_CONFIRMATION_TEMPLATE_NAME);
 }
 
+function confirmationRequired() {
+  return String(process.env.WHATSAPP_CONFIRMATION_REQUIRED || 'false').toLowerCase() === 'true';
+}
+
 function webhookConfigured() {
   return Boolean(process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN);
 }
@@ -38,6 +42,7 @@ function getWhatsAppStatus() {
     configured: transportConfigured(),
     reminder_configured: whatsappConfigured(),
     confirmation_configured: confirmationConfigured(),
+    confirmation_required: confirmationRequired(),
     webhook_configured: webhookConfigured(),
     signature_verification: Boolean(process.env.WHATSAPP_APP_SECRET),
     graph_version: process.env.WHATSAPP_GRAPH_VERSION || null,
@@ -205,6 +210,7 @@ function extractWebhookEvents(payload) {
 module.exports = {
   whatsappConfigured,
   confirmationConfigured,
+  confirmationRequired,
   webhookConfigured,
   transportConfigured,
   getWhatsAppStatus,
