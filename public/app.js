@@ -86,7 +86,9 @@ async function submitBooking(event) {
         barber_id: Number(els.barber.value), date: els.date.value, time: els.time.value, notes: els.notes.value.trim()
       })
     });
-    els.formMessage.textContent = `Reserva #${result.id} registrada como pendiente para ${formatDate(result.appointment_date)} a las ${String(result.start_time).slice(0, 5)}.`;
+    els.formMessage.textContent = result.confirmation_required
+      ? `Reserva temporal #${result.id} registrada. Revisá tu WhatsApp y confirmá el turno dentro de ${result.confirmation_timeout_minutes} minutos. Si no confirmás, el horario se libera automáticamente.`
+      : `Reserva #${result.id} registrada como pendiente para ${formatDate(result.appointment_date)} a las ${String(result.start_time).slice(0, 5)}.`;
     els.formMessage.className = 'form-message success';
     els.clientName.value = '';
     els.clientPhone.value = '';
