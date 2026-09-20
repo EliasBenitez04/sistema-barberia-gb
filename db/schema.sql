@@ -77,6 +77,12 @@ CREATE TABLE IF NOT EXISTS appointments (
   notes TEXT,
   whatsapp_reminder_sent_at TIMESTAMP WITH TIME ZONE,
   whatsapp_message_id VARCHAR(255),
+  whatsapp_confirmation_sent_at TIMESTAMP WITH TIME ZONE,
+  whatsapp_confirmation_message_id VARCHAR(255),
+  confirmation_deadline TIMESTAMP WITH TIME ZONE,
+  confirmation_responded_at TIMESTAMP WITH TIME ZONE,
+  confirmation_response VARCHAR(30),
+  cancellation_reason VARCHAR(80),
   created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
   CHECK (start_time < end_time)
@@ -88,6 +94,8 @@ CREATE INDEX IF NOT EXISTS appointments_client_idx
   ON appointments (client_id, appointment_date DESC);
 CREATE INDEX IF NOT EXISTS appointments_status_idx
   ON appointments (status, appointment_date);
+CREATE INDEX IF NOT EXISTS appointments_confirmation_deadline_idx
+  ON appointments (status, confirmation_deadline);
 
 CREATE TABLE IF NOT EXISTS appointment_status_history (
   id SERIAL PRIMARY KEY,
