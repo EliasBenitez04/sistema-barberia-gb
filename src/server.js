@@ -6,7 +6,18 @@ const bcrypt = require('bcryptjs');
 const { DateTime } = require('luxon');
 const { pool, query } = require('./db');
 const { signAdmin, requireAdmin } = require('./auth');
-const { whatsappConfigured, sendAppointmentReminder, normalizePhone } = require('./whatsapp');
+const {
+  whatsappConfigured,
+  confirmationConfigured,
+  getWhatsAppStatus,
+  sendAppointmentReminder,
+  sendAppointmentConfirmation,
+  sendTestMessage,
+  normalizePhone,
+  verifyWebhookRequest,
+  verifyWebhookSignature,
+  extractWebhookEvents
+} = require('./whatsapp');
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -16,7 +27,12 @@ const STATUSES = ['pendiente', 'confirmado', 'atendido', 'cancelado'];
 if (!process.env.DATABASE_URL) throw new Error('Falta DATABASE_URL en .env');
 if (!process.env.JWT_SECRET) throw new Error('Falta JWT_SECRET en .env');
 
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({
+  limit: '1mb',
+  verify: (req, res, buffer) => {
+    req.rawBody = Buffer.from(buffer);
+  }
+}));
 app.use(express.urlencoded({ extended: false }));
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
@@ -56,6 +72,111 @@ function dateWeekday(date) {
 
 function formatDateEs(date) {
   return DateTime.fromISO(String(date), { zone: ZONE }).setLocale('es').toFormat('dd/LL/yyyy');
+}
+
+async function ensureWhatsAppStorage() {
+  await query(`
+    CREATE TABLE IF NOT EXISTS whatsapp_messages (
+      id BIGSERIAL PRIMARY KEY,
+      appointment_id INTEGER REFERENCES appointments(id) ON DELETE SET NULL,
+      direction VARCHAR(10) NOT NULL CHECK (direction IN ('outbound', 'inbound')),
+      message_kind VARCHAR(40) NOT NULL DEFAULT 'template',
+      wa_message_id VARCHAR(255) UNIQUE,
+      phone VARCHAR(40),
+      template_name VARCHAR(140),
+      status VARCHAR(40),
+      status_at TIMESTAMP WITH TIME ZONE,
+      error_code VARCHAR(80),
+      error_message TEXT,
+      payload JSONB,
+      created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+    )
+  `);
+  await query('CREATE INDEX IF NOT EXISTS whatsapp_messages_created_idx ON whatsapp_messages (created_at DESC)');
+  await query('CREATE INDEX IF NOT EXISTS whatsapp_messages_appointment_idx ON whatsapp_messages (appointment_id, created_at DESC)');
+}
+
+async function logWhatsAppOutbound({ appointmentId = null, phone, messageKind = 'template', templateName = null, response = null, status = 'accepted', error = null }) {
+  const messageId = response?.messages?.[0]?.id || null;
+  await query(
+    `INSERT INTO whatsapp_messages
+      (appointment_id, direction, message_kind, wa_message_id, phone, template_name, status, status_at, error_code, error_message, payload)
+     VALUES ($1, 'outbound', $2, $3, $4, $5, $6, NOW(), $7, $8, $9::jsonb)
+     ON CONFLICT (wa_message_id) DO UPDATE SET
+       status = EXCLUDED.status,
+       status_at = EXCLUDED.status_at,
+       error_code = EXCLUDED.error_code,
+       error_message = EXCLUDED.error_message,
+       payload = EXCLUDED.payload,
+       updated_at = NOW()`,
+    [
+      appointmentId,
+      messageKind,
+      messageId,
+      normalizePhone(phone) || null,
+      templateName,
+      status,
+      error?.code ? String(error.code) : null,
+      error?.message || null,
+      JSON.stringify(response || error?.details || {})
+    ]
+  );
+  return messageId;
+}
+
+async function storeWhatsAppWebhook(payload) {
+  const { statuses, messages } = extractWebhookEvents(payload);
+
+  for (const status of statuses) {
+    const error = status.errors?.[0] || null;
+    const statusAt = Number(status.timestamp) ? new Date(Number(status.timestamp) * 1000) : new Date();
+    await query(
+      `INSERT INTO whatsapp_messages
+        (direction, message_kind, wa_message_id, phone, status, status_at, error_code, error_message, payload)
+       VALUES ('outbound', 'unknown', $1, $2, $3, $4, $5, $6, $7::jsonb)
+       ON CONFLICT (wa_message_id) DO UPDATE SET
+         phone = COALESCE(EXCLUDED.phone, whatsapp_messages.phone),
+         status = EXCLUDED.status,
+         status_at = EXCLUDED.status_at,
+         error_code = EXCLUDED.error_code,
+         error_message = EXCLUDED.error_message,
+         payload = EXCLUDED.payload,
+         updated_at = NOW()`,
+      [
+        status.id || null,
+        normalizePhone(status.recipient_id) || null,
+        status.status || 'unknown',
+        statusAt,
+        error?.code ? String(error.code) : null,
+        error?.message || error?.title || error?.error_data?.details || null,
+        JSON.stringify(status)
+      ]
+    );
+  }
+
+  for (const message of messages) {
+    const statusAt = Number(message.timestamp) ? new Date(Number(message.timestamp) * 1000) : new Date();
+    await query(
+      `INSERT INTO whatsapp_messages
+        (direction, message_kind, wa_message_id, phone, status, status_at, payload)
+       VALUES ('inbound', $1, $2, $3, 'received', $4, $5::jsonb)
+       ON CONFLICT (wa_message_id) DO UPDATE SET
+         status = 'received',
+         status_at = EXCLUDED.status_at,
+         payload = EXCLUDED.payload,
+         updated_at = NOW()`,
+      [
+        message.type || 'unknown',
+        message.id || null,
+        normalizePhone(message.from) || null,
+        statusAt,
+        JSON.stringify(message)
+      ]
+    );
+  }
+
+  return { statuses: statuses.length, messages: messages.length };
 }
 
 async function ensureInitialAdmin() {
@@ -145,9 +266,26 @@ async function validateBookingSlot(client, { barberId, serviceId, date, startTim
 app.get('/api/health', async (req, res) => {
   try {
     const db = await query('SELECT version() AS version, NOW() AS now');
-    res.json({ ok: true, database: db.rows[0].version, time: db.rows[0].now, whatsapp: whatsappConfigured() });
+    res.json({ ok: true, database: db.rows[0].version, time: db.rows[0].now, whatsapp: getWhatsAppStatus() });
   } catch (error) {
     apiError(res, 503, 'No se pudo conectar con PostgreSQL.');
+  }
+});
+
+app.get('/api/webhooks/whatsapp', (req, res) => {
+  const challenge = verifyWebhookRequest(req.query);
+  if (challenge === null) return res.sendStatus(403);
+  res.status(200).send(challenge);
+});
+
+app.post('/api/webhooks/whatsapp', async (req, res, next) => {
+  try {
+    const signature = req.get('x-hub-signature-256');
+    if (!verifyWebhookSignature(req.rawBody, signature)) return res.sendStatus(401);
+    await storeWhatsAppWebhook(req.body);
+    res.sendStatus(200);
+  } catch (error) {
+    next(error);
   }
 });
 
@@ -251,11 +389,44 @@ app.post('/api/public/appointments', async (req, res, next) => {
     );
     await client.query('COMMIT');
 
+    let whatsappConfirmationSent = false;
+    if (confirmationConfigured()) {
+      try {
+        const confirmationResponse = await sendAppointmentConfirmation({
+          phone,
+          clientName,
+          dateLabel: formatDateEs(date),
+          timeLabel: startTime,
+          barberName: validation.item.barber_name,
+          serviceName: validation.item.service_name
+        });
+        whatsappConfirmationSent = true;
+        await logWhatsAppOutbound({
+          appointmentId: appointment.rows[0].id,
+          phone,
+          messageKind: 'confirmation',
+          templateName: process.env.WHATSAPP_CONFIRMATION_TEMPLATE_NAME,
+          response: confirmationResponse
+        }).catch(error => console.error('No se pudo registrar confirmación de WhatsApp:', error.message));
+      } catch (error) {
+        console.error('No se pudo enviar confirmación de WhatsApp:', error.message);
+        await logWhatsAppOutbound({
+          appointmentId: appointment.rows[0].id,
+          phone,
+          messageKind: 'confirmation',
+          templateName: process.env.WHATSAPP_CONFIRMATION_TEMPLATE_NAME,
+          status: 'failed',
+          error
+        }).catch(() => {});
+      }
+    }
+
     res.status(201).json({
       ...appointment.rows[0],
       service_name: validation.item.service_name,
       barber_name: validation.item.barber_name,
-      client_name: clientName
+      client_name: clientName,
+      whatsapp_confirmation_sent: whatsappConfirmationSent
     });
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
@@ -527,6 +698,13 @@ async function sendReminderForAppointment(appointment) {
     'UPDATE appointments SET whatsapp_reminder_sent_at = NOW(), whatsapp_message_id = $1 WHERE id = $2',
     [messageId, appointment.id]
   );
+  await logWhatsAppOutbound({
+    appointmentId: appointment.id,
+    phone: appointment.client_phone,
+    messageKind: 'reminder',
+    templateName: process.env.WHATSAPP_TEMPLATE_NAME,
+    response
+  }).catch(error => console.error('No se pudo registrar recordatorio de WhatsApp:', error.message));
   return { messageId };
 }
 
@@ -543,7 +721,52 @@ app.post('/api/admin/appointments/:id/reminder', requireAdmin, async (req, res, 
 });
 
 app.get('/api/admin/whatsapp/status', requireAdmin, (req, res) => {
-  res.json({ configured: whatsappConfigured(), reminder_hours: Number(process.env.WHATSAPP_REMINDER_HOURS || 24) });
+  const baseUrl = String(process.env.PUBLIC_BASE_URL || '').replace(/\/$/, '');
+  res.json({
+    ...getWhatsAppStatus(),
+    webhook_path: '/api/webhooks/whatsapp',
+    webhook_url: baseUrl ? `${baseUrl}/api/webhooks/whatsapp` : null
+  });
+});
+
+app.post('/api/admin/whatsapp/test', requireAdmin, async (req, res, next) => {
+  try {
+    const phone = normalizePhone(req.body.phone);
+    if (phone.length < 8) return apiError(res, 400, 'Ingresá un número con código de país, por ejemplo 595981123456.');
+    const response = await sendTestMessage({ phone });
+    const messageId = response?.messages?.[0]?.id || null;
+    await logWhatsAppOutbound({
+      phone,
+      messageKind: 'test',
+      templateName: process.env.WHATSAPP_TEST_TEMPLATE_NAME || 'hello_world',
+      response
+    }).catch(error => console.error('No se pudo registrar prueba de WhatsApp:', error.message));
+    res.json({ ok: true, message_id: messageId });
+  } catch (error) {
+    if (['WHATSAPP_NOT_CONFIGURED', 'WHATSAPP_INVALID_PHONE', 'WHATSAPP_TEMPLATE_MISSING'].includes(error.code)) {
+      return apiError(res, 503, error.message);
+    }
+    if (error.code === 'WHATSAPP_API_ERROR') {
+      return apiError(res, error.status || 502, error.message, error.details);
+    }
+    next(error);
+  }
+});
+
+app.get('/api/admin/whatsapp/events', requireAdmin, async (req, res, next) => {
+  try {
+    const result = await query(
+      `SELECT wm.id, wm.appointment_id, wm.direction, wm.message_kind, wm.wa_message_id, wm.phone,
+              wm.template_name, wm.status, wm.status_at, wm.error_code, wm.error_message, wm.created_at,
+              c.name AS client_name
+         FROM whatsapp_messages wm
+         LEFT JOIN appointments a ON a.id = wm.appointment_id
+         LEFT JOIN clients c ON c.id = a.client_id
+        ORDER BY wm.created_at DESC
+        LIMIT 100`
+    );
+    res.json(result.rows);
+  } catch (error) { next(error); }
 });
 
 app.get('/api/admin/clients', requireAdmin, async (req, res, next) => {
@@ -668,6 +891,7 @@ app.use((error, req, res, next) => {
 (async () => {
   try {
     await query('SELECT 1');
+    await ensureWhatsAppStorage();
     await ensureInitialAdmin();
     app.listen(PORT, () => console.log(`Barbería GB en http://localhost:${PORT}`));
     setInterval(reminderWorker, 10 * 60 * 1000);
