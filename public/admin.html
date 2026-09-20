@@ -31,6 +31,7 @@
         <button data-section="barbers">Barberos</button>
         <button data-section="services">Servicios</button>
         <button data-section="clients">Clientes</button>
+        <button data-section="whatsapp">WhatsApp</button>
         <button data-section="reports">Reportes</button>
       </nav>
       <div class="admin-user"><span id="adminName">Administrador</span><button id="logoutBtn" class="button ghost small">Salir</button></div>
@@ -88,6 +89,37 @@
         <div class="panel filters"><label>Buscar<input id="clientSearch" placeholder="Nombre o teléfono"></label><button id="searchClientsBtn" class="button primary">Buscar</button></div>
         <div class="panel table-wrap"><table><thead><tr><th>Cliente</th><th>Teléfono</th><th>Turnos</th><th>Cortes</th><th>Total gastado</th><th></th></tr></thead><tbody id="clientsTable"></tbody></table></div>
         <div id="clientHistory" class="panel hidden"></div>
+      </section>
+
+      <section id="section-whatsapp" class="admin-section hidden">
+        <div id="whatsappStatusCards" class="stat-grid"></div>
+
+        <div class="admin-two-col">
+          <div class="panel">
+            <div class="panel-heading"><div><p class="eyebrow">CLOUD API</p><h2>Configuración</h2></div><button id="reloadWhatsAppBtn" class="button ghost small" type="button">Actualizar</button></div>
+            <div id="whatsappConfigDetails" class="stack-list"></div>
+          </div>
+
+          <form id="whatsappTestForm" class="panel form-panel">
+            <div><p class="eyebrow">PRUEBA REAL</p><h2>Enviar mensaje de prueba</h2></div>
+            <p class="muted">Usa el template de prueba configurado. Por defecto: <strong>hello_world</strong>.</p>
+            <label>Número destino
+              <input id="whatsappTestPhone" inputmode="tel" placeholder="595981123456" required>
+            </label>
+            <button class="button primary" type="submit">Enviar WhatsApp de prueba</button>
+            <p id="whatsappTestMessage" class="form-message"></p>
+          </form>
+        </div>
+
+        <div class="panel">
+          <div class="panel-heading"><div><p class="eyebrow">WEBHOOK / ENTREGAS</p><h2>Últimos eventos</h2></div><button id="reloadWhatsAppEventsBtn" class="button ghost small" type="button">Recargar</button></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Fecha</th><th>Dirección</th><th>Tipo</th><th>Cliente / número</th><th>Estado</th><th>Template</th><th>Error</th></tr></thead>
+              <tbody id="whatsappEventsTable"></tbody>
+            </table>
+          </div>
+        </div>
       </section>
 
       <section id="section-reports" class="admin-section hidden">
