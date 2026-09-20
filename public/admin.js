@@ -28,13 +28,14 @@ function showSection(name) {
   $$('.admin-section').forEach(s => s.classList.add('hidden'));
   $(`#section-${name}`).classList.remove('hidden');
   $$('#adminNav button').forEach(b => b.classList.toggle('active', b.dataset.section === name));
-  const titles = {dashboard:'Resumen', appointments:'Turnos', barbers:'Barberos', services:'Servicios', clients:'Clientes', reports:'Reportes'};
+  const titles = {dashboard:'Resumen', appointments:'Turnos', barbers:'Barberos', services:'Servicios', clients:'Clientes', whatsapp:'WhatsApp', reports:'Reportes'};
   $('#sectionTitle').textContent = titles[name] || name;
   if (name==='dashboard') loadDashboard();
   if (name==='appointments') loadAppointments();
   if (name==='barbers') loadBarbers();
   if (name==='services') loadServices();
   if (name==='clients') loadClients();
+  if (name==='whatsapp') loadWhatsApp();
   if (name==='reports') loadReports();
 }
 
@@ -101,9 +102,80 @@ async function showClientHistory(id){ const data=await api(`/api/admin/clients/$
 
 async function loadReports(){ const qs=new URLSearchParams({from:$('#reportFrom').value||monthStart(),to:$('#reportTo').value||today()}); const data=await api(`/api/admin/reports?${qs}`); $('#reportFrom').value=data.from; $('#reportTo').value=data.to; $('#reportSummary').innerHTML=[['Ingresos',currency.format(Number(data.summary.ingresos))],['Cortes',data.summary.cortes],['Turnos',data.summary.total_turnos],['Cancelados',data.summary.cancelados]].map(([l,v])=>`<article class="stat-card"><span>${l}</span><strong>${v}</strong></article>`).join(''); $('#reportBarbers').innerHTML=data.by_barber.map(x=>`<div class="list-row"><strong>${esc(x.name)}</strong><span>${x.cortes} cortes · ${currency.format(Number(x.ingresos))}</span></div>`).join(''); $('#reportServices').innerHTML=data.by_service.map(x=>`<div class="list-row"><strong>${esc(x.name)}</strong><span>${x.cortes} cortes · ${currency.format(Number(x.ingresos))}</span></div>`).join(''); $('#reportDaily').innerHTML=data.daily.length?data.daily.map(x=>`<div class="list-row"><strong>${dateLabel(x.appointment_date)}</strong><span>${x.cortes} cortes · ${currency.format(Number(x.ingresos))}</span></div>`).join(''):'<div class="empty-state">Sin actividad en el rango.</div>'; }
 
+function dateTimeLabel(value) {
+  if (!value) return '—';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? esc(value) : date.toLocaleString('es-PY');
+}
+
+async function loadWhatsApp() {
+  try {
+    const data = await api('/api/admin/whatsapp/status');
+    $('#whatsappBadge').textContent = data.configured ? 'WhatsApp activo' : 'WhatsApp sin configurar';
+    $('#whatsappBadge').classList.toggle('success', data.configured);
+
+    $('#whatsappStatusCards').innerHTML = [
+      ['Cloud API', data.configured ? 'Listo' : 'Incompleto'],
+      ['Recordatorios', data.reminder_configured ? 'Listos' : 'Pendientes'],
+      ['Confirmación', data.confirmation_configured ? 'Activa' : 'Opcional'],
+      ['Webhook', data.webhook_configured ? 'Configurado' : 'Pendiente']
+    ].map(([label,value])=>`<article class="stat-card"><span>${esc(label)}</span><strong>${esc(value)}</strong></article>`).join('');
+
+    const webhook = data.webhook_url || data.webhook_path;
+    const missing = data.missing?.length ? data.missing.join(', ') : 'Ninguna';
+    $('#whatsappConfigDetails').innerHTML = [
+      ['Graph API', data.graph_version || 'Sin definir'],
+      ['Phone Number ID', data.phone_number_id || 'Sin definir'],
+      ['Template recordatorio', data.reminder_template || 'Sin definir'],
+      ['Template confirmación', data.confirmation_template || 'No configurado'],
+      ['Template de prueba', `${data.test_template} (${data.test_language})`],
+      ['Recordatorio automático', `${data.reminder_hours} h antes`],
+      ['Webhook', webhook],
+      ['Firma webhook', data.signature_verification ? 'Validación activa' : 'Sin WHATSAPP_APP_SECRET'],
+      ['Variables faltantes', missing]
+    ].map(([label,value])=>`<div class="stack-item"><div><strong>${esc(label)}</strong><span>${esc(value)}</span></div></div>`).join('');
+
+    await loadWhatsAppEvents();
+  } catch (error) {
+    $('#whatsappConfigDetails').innerHTML = `<div class="empty-state">${esc(error.message)}</div>`;
+  }
+}
+
+async function loadWhatsAppEvents() {
+  const events = await api('/api/admin/whatsapp/events');
+  $('#whatsappEventsTable').innerHTML = events.length ? events.map(item => `<tr>
+    <td>${dateTimeLabel(item.status_at || item.created_at)}</td>
+    <td>${item.direction === 'outbound' ? 'Salida' : 'Entrada'}</td>
+    <td>${esc(item.message_kind || '—')}</td>
+    <td>${esc(item.client_name || item.phone || '—')}</td>
+    <td>${esc(item.status || '—')}</td>
+    <td>${esc(item.template_name || '—')}</td>
+    <td>${esc(item.error_message || item.error_code || '—')}</td>
+  </tr>`).join('') : '<tr><td colspan="7">Todavía no hay eventos de WhatsApp.</td></tr>';
+}
+
+async function sendWhatsAppTest(event) {
+  event.preventDefault();
+  const message = $('#whatsappTestMessage');
+  message.textContent = 'Enviando...';
+  message.className = 'form-message';
+  try {
+    const result = await api('/api/admin/whatsapp/test', {
+      method: 'POST',
+      body: JSON.stringify({ phone: $('#whatsappTestPhone').value })
+    });
+    message.textContent = result.message_id ? `Mensaje aceptado por Meta. ID: ${result.message_id}` : 'Mensaje aceptado por Meta.';
+    message.className = 'form-message success';
+    await loadWhatsAppEvents();
+  } catch (error) {
+    message.textContent = error.message;
+    message.className = 'form-message error';
+  }
+}
+
 $('#loginForm').addEventListener('submit',login); $('#logoutBtn').addEventListener('click',logout); $('#adminNav').addEventListener('click',e=>{const b=e.target.closest('[data-section]'); if(b)showSection(b.dataset.section);});
 document.addEventListener('click',e=>{ const go=e.target.closest('[data-go]'); if(go)showSection(go.dataset.go); const eb=e.target.closest('[data-edit-barber]'); if(eb)editBarber(eb.dataset.editBarber); const sb=e.target.closest('[data-schedule-barber]'); if(sb)openSchedule(sb.dataset.scheduleBarber); const es=e.target.closest('[data-edit-service]'); if(es)editService(es.dataset.editService); const ch=e.target.closest('[data-client-history]'); if(ch)showClientHistory(ch.dataset.clientHistory); const rem=e.target.closest('[data-reminder-id]'); if(rem)sendReminder(rem.dataset.reminderId); });
 document.addEventListener('change',e=>{ if(e.target.matches('[data-status-id]')) changeStatus(e.target.dataset.statusId,e.target.value); });
-$('#filterAppointmentsBtn').addEventListener('click',loadAppointments); $('#barberForm').addEventListener('submit',saveBarber); $('#barberResetBtn').addEventListener('click',resetBarberForm); $('#saveScheduleBtn').addEventListener('click',saveSchedule); $('#closeScheduleBtn').addEventListener('click',()=>$('#schedulePanel').classList.add('hidden')); $('#serviceForm').addEventListener('submit',saveService); $('#serviceResetBtn').addEventListener('click',resetServiceForm); $('#searchClientsBtn').addEventListener('click',loadClients); $('#loadReportsBtn').addEventListener('click',loadReports);
+$('#filterAppointmentsBtn').addEventListener('click',loadAppointments); $('#barberForm').addEventListener('submit',saveBarber); $('#barberResetBtn').addEventListener('click',resetBarberForm); $('#saveScheduleBtn').addEventListener('click',saveSchedule); $('#closeScheduleBtn').addEventListener('click',()=>$('#schedulePanel').classList.add('hidden')); $('#serviceForm').addEventListener('submit',saveService); $('#serviceResetBtn').addEventListener('click',resetServiceForm); $('#searchClientsBtn').addEventListener('click',loadClients); $('#loadReportsBtn').addEventListener('click',loadReports); $('#whatsappTestForm').addEventListener('submit',sendWhatsAppTest); $('#reloadWhatsAppBtn').addEventListener('click',loadWhatsApp); $('#reloadWhatsAppEventsBtn').addEventListener('click',loadWhatsAppEvents);
 $('#filterFrom').value=today(); $('#filterTo').value=today(); $('#reportFrom').value=monthStart(); $('#reportTo').value=today();
 if(token) openAdmin();
