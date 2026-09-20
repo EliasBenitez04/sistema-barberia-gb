@@ -117,7 +117,7 @@ async function loadWhatsApp() {
     $('#whatsappStatusCards').innerHTML = [
       ['Cloud API', data.configured ? 'Listo' : 'Incompleto'],
       ['Recordatorios', data.reminder_configured ? 'Listos' : 'Pendientes'],
-      ['Confirmación', data.confirmation_configured ? 'Activa' : 'Opcional'],
+      ['Confirmación', data.confirmation_required ? (data.confirmation_configured ? 'Obligatoria' : 'Falta configurar') : (data.confirmation_configured ? 'Activa' : 'Opcional')],
       ['Webhook', data.webhook_configured ? 'Configurado' : 'Pendiente']
     ].map(([label,value])=>`<article class="stat-card"><span>${esc(label)}</span><strong>${esc(value)}</strong></article>`).join('');
 
@@ -129,6 +129,7 @@ async function loadWhatsApp() {
       ['Template recordatorio', data.reminder_template || 'Sin definir'],
       ['Template confirmación', data.confirmation_template || 'No configurado'],
       ['Template de prueba', `${data.test_template} (${data.test_language})`],
+      ['Confirmar antes de', `${data.confirmation_timeout_minutes} min`],
       ['Recordatorio automático', `${data.reminder_hours} h antes`],
       ['Webhook', webhook],
       ['Firma webhook', data.signature_verification ? 'Validación activa' : 'Sin WHATSAPP_APP_SECRET'],
